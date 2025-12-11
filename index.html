@@ -146,14 +146,21 @@ setInterval(()=>{
 
     classifyOrder(order);
 
-    if(isOnline){
-      onlineOrders.push(order);
-      notify(`ONLINE ORDER #${order.id}`);
+   if (isOnline) {
+  // Add to approval (online ordering) table
+  order.status = "Pending Cashier Confirmation";
+  onlineOrders.push(order);
 
-    } else {
-      counterOrders.push(order);
-      notify(`COUNTER ORDER #${order.id}`);
-    }
+  // But ALSO send to kitchen immediately
+  classifyOrder(order);
+  order.status = "Preparing"; // kitchen default state
+
+  if(order.queue === "Easy") easyQueue.push(order);
+  else hardQueue.push(order);
+
+  notify(`ONLINE ORDER #${order.id} sent to kitchen AND awaiting cashier confirmation.`);
+}
+
 
 
     renderAll();
@@ -189,9 +196,13 @@ function approveOnline(id) {
   let order = onlineOrders.find(o => o.id === id);
   if (!order) return;
 
-  order.status = "Paid";
-  sendToKitchen(order, "online-approved");
+  onlineOrders = onlineOrders.filter(o => o.id !== id);
+
+  notify(`Online order #${id} approved by cashier.`);
+
+  renderAll();
 }
+
 
 function markOnline(id){ 
   const idx=cashierOrders.findIndex(o=>o.id===id); 
@@ -310,3 +321,5 @@ window.renderAll=renderAll;
 
 renderAll();
 </script>
+
+  
