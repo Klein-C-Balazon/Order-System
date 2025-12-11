@@ -28,21 +28,22 @@
     </table>
   </div>
 
-  <div class="order-panel">
-    <h2>Online Ordering</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Order ID</th>
-          <th>Items</th>
-          <th>Complexity</th>
-          <th>Queue</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody id="onlineTable"></tbody>
-    </table>
-  </div>
+<div class="order-panel">
+  <h2>Online Ordering</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Order ID</th>
+        <th>Items</th>
+        <th>Complexity</th>
+        <th>Queue</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="onlineTable"></tbody>
+  </table>
+</div>
 
 </div>
 
@@ -140,7 +141,7 @@ setInterval(()=>{
       id: nextId++,
       items,
       paid: false,
-      status: isOnline ? "Online Received" : "Waiting for Payment"
+      status: isOnline ? "Unpaid (Online)" : "Waiting for Payment"
     };
 
     classifyOrder(order);
@@ -149,13 +150,11 @@ setInterval(()=>{
       onlineOrders.push(order);
       notify(`ONLINE ORDER #${order.id}`);
 
-      // Auto-route to kitchen after short delay (simulating instant payment)
-      setTimeout(()=>sendToKitchen(order,"online"), 600);
-
     } else {
       counterOrders.push(order);
       notify(`COUNTER ORDER #${order.id}`);
     }
+
 
     renderAll();
   }
@@ -184,6 +183,14 @@ function sendToKitchen(order, source){
 function markPaid(id){ 
   let o = counterOrders.find(x=>x.id===id);
   if(o) sendToKitchen(o,"f2f"); 
+}
+
+function approveOnline(id) {
+  let order = onlineOrders.find(o => o.id === id);
+  if (!order) return;
+
+  order.status = "Paid";
+  sendToKitchen(order, "online-approved");
 }
 
 function markOnline(id){ 
@@ -242,21 +249,25 @@ function renderAll(){
     `;
   });
 
+
+
   /* ONLINE TABLE */
-  const onlineT=document.getElementById('onlineTable');
-  onlineT.innerHTML="";
-  onlineOrders.forEach(o=>{
-    const items=o.items.map(i=>`${i.name} (${i.qty})`).join(", ");
-    onlineT.innerHTML += `
-      <tr>
-        <td>${o.id}</td>
-        <td>${items}</td>
-        <td>${o.complexity}</td>
-        <td>${o.queue}</td>
-        <td>${o.status}</td>
-      </tr>
-    `;
-  });
+  // Render Online Orders
+const onlineT = document.getElementById('onlineTable');
+onlineT.innerHTML = "";
+onlineOrders.forEach(o=>{
+  const items = o.items.map(i=>`${i.name} (${i.qty})`).join(", ");
+  onlineT.innerHTML += `
+    <tr>
+      <td>${o.id}</td>
+      <td>${items}</td>
+      <td>${o.complexity}</td>
+      <td>${o.queue}</td>
+      <td>${o.status}</td>
+      <td><button onclick="approveOnline(${o.id})">Approve</button></td>
+    </tr>
+  `;
+});
 
   /* ORIGINAL KITCHEN RENDERING (UNCHANGED) */
   const easyT=document.getElementById('easyKitchen'); easyT.innerHTML="";
@@ -287,6 +298,7 @@ function renderAll(){
       </tr>`;
   });
 }
+
 
 document.getElementById('undoBtn').addEventListener('click', ()=>undo());
 window.markPaid=markPaid; 
