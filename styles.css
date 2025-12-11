@@ -1,0 +1,59 @@
+/* Simple CSS for your dashboard */
+
+/* General */
+body {
+    font-family: Arial, sans-serif;
+    background: #f4f4f4;
+    padding: 20px;
+}
+
+/* Section titles */
+h2 {
+    margin-top: 30px;
+    margin-bottom: 10px;
+}
+
+/* Tables */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    margin-bottom: 20px;
+}
+
+thead th {
+    background: #dddddd;
+    padding: 10px;
+    text-align: left;
+}
+
+tbody td {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+/* Alternate row color */
+tbody tr:nth-child(even) {
+    background: #f9f9f9;
+}
+
+/* Buttons */
+button {
+    padding: 6px 10px;
+    background: #3498db;
+    border: none;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #2980b9;
+}
+
+/* Undo button */
+#lastAction {
+    margin-left: 10px;
+    font-weight: bold;
+    color: #555;
+}
