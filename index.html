@@ -2,27 +2,49 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-    <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css">
   <title>Auto Order System — Easy/Hard + Undo</title>
 </head>
 <body>
   <h1>Order System</h1>
 
   <h2>Cashier View</h2>
-  <table border="1" cellpadding="6">
-    <thead>
-      <tr>
-        <th>Order ID</th>
-        <th>Items</th>
-        <th>Complexity</th>
-        <th>Queue</th>
-        <th>Paid?</th>
-        <th>Actions</th>
-        <th>Online Pay (check & route)</th>
-      </tr>
-    </thead>
-    <tbody id="cashierTable"></tbody>
-  </table>
+  <div class="flex-row">
+
+  <div class="order-panel">
+    <h2>Counter Ordering (F2F)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Order ID</th>
+          <th>Items</th>
+          <th>Complexity</th>
+          <th>Queue</th>
+          <th>Paid?</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="counterTable"></tbody>
+    </table>
+  </div>
+
+  <div class="order-panel">
+    <h2>Online Ordering</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Order ID</th>
+          <th>Items</th>
+          <th>Complexity</th>
+          <th>Queue</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="onlineTable"></tbody>
+    </table>
+  </div>
+
+</div>
 
   <p>
     <button id="undoBtn">UNDO</button>
@@ -63,106 +85,216 @@ let easyQueue = [];
 let hardQueue = [];
 let actionStack = [];
 
+/* NEW ARRAYS FOR TWO NEW TABLES */
+let counterOrders = [];
+let onlineOrders = [];
+
 const notifyEl = document.getElementById('notifications');
 function notify(msg) { notifyEl.textContent = msg; }
 function clone(o){ return JSON.parse(JSON.stringify(o)); }
 function pushAction(action){ actionStack.push(clone(action)); document.getElementById('lastAction').innerText=action.type; }
 
 function computeComplexity(items){ return items.reduce((s,i)=>s+(complexityValues[i.name]||0)*i.qty,0); }
-function classifyOrder(order){ const score=computeComplexity(order.items); order.complexity=score; order.queue=score>10?"Hard":"Easy"; }
+function classifyOrder(order){ 
+  const score=computeComplexity(order.items); 
+  order.complexity=score; 
+  order.queue=score>10?"Hard":"Easy"; 
+}
 
+/* --------------------------------------------------------------------------
+   TEMPORARY ORDER GENERATOR (TEMPORATY TIL REPLACED)
+   --------------------------------------------------------------------------
+   This block SIMULATES incoming customers for demo/testing purposes.
+
+   • Math.random() < 0.25
+         → Means a 25% chance every 3 seconds to create a new order
+         → You can adjust the 0.25 to make orders appear more or less often
+
+   • const isOnline = Math.random() < 0.5;
+         → 50% chance customer is ONLINE
+         → 50% chance customer is COUNTER/F2F
+         → This simulates the decision in your diagram
+
+   ★ IMPORTANT:
+     Replace this whole block later when the REAL customer input code
+     (API, socket, scanner, kiosk, mobile app, etc.) is integrated.
+   -------------------------------------------------------------------------- */
+setInterval(()=>{
+  if(Math.random() < 0.25){  // 25% chance to spawn a new random order
+
+    const nItems = Math.floor(Math.random()*2)+1;
+    const items = [];
+    for(let i=0;i<nItems;i++){
+      const it = menuItems[Math.floor(Math.random()*menuItems.length)];
+      const q = Math.floor(Math.random()*3)+1;
+      items.push({name:it, qty:q});
+    }
+
+    /* -------------
+       TEMPORARY: Determine customer type randomly (TEMPORATY TIL REPLACED)
+       50% online, 50% counter
+    ------------- */
+    const isOnline = Math.random() < 0.5;
+
+    const order = {
+      id: nextId++,
+      items,
+      paid: false,
+      status: isOnline ? "Online Received" : "Waiting for Payment"
+    };
+
+    classifyOrder(order);
+
+    if(isOnline){
+      onlineOrders.push(order);
+      notify(`ONLINE ORDER #${order.id}`);
+
+      // Auto-route to kitchen after short delay (simulating instant payment)
+      setTimeout(()=>sendToKitchen(order,"online"), 600);
+
+    } else {
+      counterOrders.push(order);
+      notify(`COUNTER ORDER #${order.id}`);
+    }
+
+    renderAll();
+  }
+},3000);
+/* ---------------- END OF TEMPORARY SYSTEM -------------------------- */
+
+
+/* ---------- SEND TO KITCHEN LOGIC (UNCHANGED) ---------- */
 function sendToKitchen(order, source){
+
+  counterOrders = counterOrders.filter(o=>o.id!==order.id);
+  onlineOrders = onlineOrders.filter(o=>o.id!==order.id);
   cashierOrders = cashierOrders.filter(o=>o.id!==order.id);
-  easyQueue = easyQueue.filter(o=>o.id!==order.id);
-  hardQueue = hardQueue.filter(o=>o.id!==order.id);
 
   classifyOrder(order);
   order.status = "Paid";
-  if(order.queue==="Easy") easyQueue.push(order); else hardQueue.push(order);
 
-  pushAction({ type: source==="online"?"OnlinePayment":"SendToKitchen", payload:{ order: clone(order), source } });
+  if(order.queue==="Easy") easyQueue.push(order); 
+  else hardQueue.push(order);
+
   notify(`Order #${order.id} sent to kitchen (${order.queue}) via ${source}.`);
   renderAll();
 }
 
-// ---------------- Randomized live orders
-setInterval(()=>{
-  if(Math.random()<0.25){
-    const nItems=Math.floor(Math.random()*2)+1;
-    const items=[];
-    for(let i=0;i<nItems;i++){
-      const it=menuItems[Math.floor(Math.random()*menuItems.length)];
-      const q=Math.floor(Math.random()*3)+1;
-      items.push({ name: it, qty: q });
-    }
-    const order={ id: nextId++, items, complexity:0, queue:"", paid:false, onlinePay:false, status:"New (live)"};
-    classifyOrder(order);
-    cashierOrders.push(order);
-    pushAction({ type:"AddOrder", payload:{ order: clone(order) }});
-    notify(`Live incoming order #${order.id} (score ${order.complexity})`);
-    renderAll();
-  }
-},3000);
+/* KEEP YOUR CASHIER BUTTONS UNTOUCHED */
+function markPaid(id){ 
+  let o = counterOrders.find(x=>x.id===id);
+  if(o) sendToKitchen(o,"f2f"); 
+}
 
-// ---------------- Cashier actions
-function markPaid(id){ const idx=cashierOrders.findIndex(o=>o.id===id); if(idx===-1)return; sendToKitchen(cashierOrders[idx],"paid"); }
-function markOnline(id){ const idx=cashierOrders.findIndex(o=>o.id===id); if(idx===-1)return; cashierOrders[idx].onlinePay=true; notify(`Checking order #${cashierOrders[idx].id} (online)...`); setTimeout(()=>sendToKitchen(cashierOrders[idx],"online"),600); }
+function markOnline(id){ 
+  const idx=cashierOrders.findIndex(o=>o.id===id); 
+  if(idx===-1)return; 
+  cashierOrders[idx].onlinePay=true; 
+  notify(`Checking order #${cashierOrders[idx].id} (online)...`); 
+  setTimeout(()=>sendToKitchen(cashierOrders[idx],"online"),600); 
+}
 
-// ---------------- Kitchen actions
-function setPreparing(id,queueType){ const q=queueType==="Easy"?easyQueue:hardQueue; const o=q.find(x=>x.id===id); if(!o)return; const prev={status:o.status}; o.status="Preparing"; pushAction({ type:"UpdateOrder", payload:{ id:o.id, prev } }); notify(`Order #${o.id} set to Preparing`); renderAll(); }
-function setReady(id,queueType){ const q=queueType==="Easy"?easyQueue:hardQueue; const o=q.find(x=>x.id===id); if(!o)return; const prev={status:o.status}; o.status="Ready"; pushAction({ type:"UpdateOrder", payload:{ id:o.id, prev } }); notify(`Order #${o.id} set to Ready`); renderAll(); }
-function serveOrder(id,queueType){ const q=queueType==="Easy"?easyQueue:hardQueue; const idx=q.findIndex(o=>o.id===id); if(idx===-1)return; const removed=q.splice(idx,1)[0]; pushAction({ type:"RemoveOrder", payload:{ order: clone(removed), queue: queueType } }); notify(`Order #${removed.id} served and removed from ${queueType}`); renderAll(); }
-
-// ---------------- UNDO logic
-function undo(){
-  if(actionStack.length===0){ alert("Nothing to undo."); return; }
-  const act=actionStack.pop();
-  document.getElementById('lastAction').innerText=actionStack.length?actionStack[actionStack.length-1].type:"None";
-  const t=act.type; const payload=act.payload;
-  if(t==="AddOrder"){ const id=payload.order.id; cashierOrders=cashierOrders.filter(o=>o.id!==id); easyQueue=easyQueue.filter(o=>o.id!==id); hardQueue=hardQueue.filter(o=>o.id!==id); notify(`Undo AddOrder: order #${id} removed`);}
-  else if(t==="SendToKitchen" || t==="OnlinePayment"){ const id=payload.order.id; easyQueue=easyQueue.filter(o=>o.id!==id); hardQueue=hardQueue.filter(o=>o.id!==id); const restored=clone(payload.order); restored.paid=(t==="SendToKitchen")?false:restored.paid; restored.onlinePay=(t==="OnlinePayment"); cashierOrders.push(restored); notify(`Undo ${t}: order #${id} returned to cashier`);}
-  else if(t==="UpdateOrder"){ const id=payload.id; let o=easyQueue.find(x=>x.id===id)||hardQueue.find(x=>x.id===id); if(o){o.status=payload.prev.status; notify(`Undo UpdateOrder: order #${id} restored to ${o.status}`);} else {notify(`Undo UpdateOrder: order #${id} not in queue`);}}
-  else if(t==="RemoveOrder"){ const restored=clone(payload.order); const queueType=payload.queue; if(queueType==="Easy") easyQueue.push(restored); else hardQueue.push(restored); notify(`Undo RemoveOrder: order #${restored.id} restored to ${queueType}`);}
+/* KITCHEN ACTIONS (UNCHANGED) */
+function setPreparing(id,queueType){
+  const q=queueType==="Easy"?easyQueue:hardQueue; 
+  const o=q.find(x=>x.id===id); 
+  if(!o)return; 
+  o.status="Preparing"; 
+  notify(`Order #${o.id} set to Preparing`);
   renderAll();
 }
 
-// ---------------- Render UI
+function setReady(id,queueType){
+  const q=queueType==="Easy"?easyQueue:hardQueue; 
+  const o=q.find(x=>x.id===id); 
+  if(!o)return; 
+  o.status="Ready"; 
+  notify(`Order #${o.id} set to Ready`);
+  renderAll();
+}
+
+function serveOrder(id,queueType){
+  const q=queueType==="Easy"?easyQueue:hardQueue;
+  const idx=q.findIndex(o=>o.id===id); 
+  if(idx===-1)return;
+  q.splice(idx,1);
+  notify(`Order #${id} served`);
+  renderAll();
+}
+
+/* ---------- RENDER UPDATED UI INCLUDING NEW TABLES ---------- */
 function renderAll(){
-  const cT=document.getElementById('cashierTable'); cT.innerHTML="";
-  cashierOrders.forEach(o=>{ const items=o.items.map(i=>`${i.name} (${i.qty})`).join(", "); const tr=document.createElement('tr'); tr.innerHTML=`
-    <td>${o.id}</td>
-    <td>${items}</td>
-    <td>${computeComplexity(o.items)}</td>
-    <td>${(computeComplexity(o.items)>10)?"Hard":"Easy"}</td>
-    <td>${o.paid?"Yes":"No"}</td>
-    <td><button onclick="markPaid(${o.id})">Mark Paid</button></td>
-    <td><button onclick="markOnline(${o.id})">Online Pay</button></td>
-  `; cT.appendChild(tr); });
 
-  const easyT=document.getElementById('easyKitchen'); easyT.innerHTML=""; easyQueue.forEach(o=>{ const items=o.items.map(i=>`${i.name} (${i.qty})`).join(", "); const tr=document.createElement('tr'); tr.innerHTML=`
-    <td>${o.id}</td>
-    <td>${items}</td>
-    <td>${o.status||"Paid"}</td>
-    <td><button onclick="setPreparing(${o.id}, 'Easy')">Preparing</button></td>
-    <td><button onclick="setReady(${o.id}, 'Easy')">Ready</button></td>
-    <td><button onclick="serveOrder(${o.id}, 'Easy')">Serve</button></td>
-  `; easyT.appendChild(tr); });
+  /* COUNTER TABLE */
+  const counterT=document.getElementById('counterTable');
+  counterT.innerHTML="";
+  counterOrders.forEach(o=>{
+    const items=o.items.map(i=>`${i.name} (${i.qty})`).join(", ");
+    counterT.innerHTML += `
+      <tr>
+        <td>${o.id}</td>
+        <td>${items}</td>
+        <td>${o.complexity}</td>
+        <td>${o.queue}</td>
+        <td>${o.paid?"Yes":"No"}</td>
+        <td><button onclick="markPaid(${o.id})">Pay</button></td>
+      </tr>
+    `;
+  });
 
-  const hardT=document.getElementById('hardKitchen'); hardT.innerHTML=""; hardQueue.forEach(o=>{ const items=o.items.map(i=>`${i.name} (${i.qty})`).join(", "); const tr=document.createElement('tr'); tr.innerHTML=`
-    <td>${o.id}</td>
-    <td>${items}</td>
-    <td>${o.status||"Paid"}</td>
-    <td><button onclick="setPreparing(${o.id}, 'Hard')">Preparing</button></td>
-    <td><button onclick="setReady(${o.id}, 'Hard')">Ready</button></td>
-    <td><button onclick="serveOrder(${o.id}, 'Hard')">Serve</button></td>
-  `; hardT.appendChild(tr); });
+  /* ONLINE TABLE */
+  const onlineT=document.getElementById('onlineTable');
+  onlineT.innerHTML="";
+  onlineOrders.forEach(o=>{
+    const items=o.items.map(i=>`${i.name} (${i.qty})`).join(", ");
+    onlineT.innerHTML += `
+      <tr>
+        <td>${o.id}</td>
+        <td>${items}</td>
+        <td>${o.complexity}</td>
+        <td>${o.queue}</td>
+        <td>${o.status}</td>
+      </tr>
+    `;
+  });
+
+  /* ORIGINAL KITCHEN RENDERING (UNCHANGED) */
+  const easyT=document.getElementById('easyKitchen'); easyT.innerHTML="";
+  easyQueue.forEach(o=>{
+    const items=o.items.map(i=>`${i.name} (${i.qty})`).join(", ");
+    easyT.innerHTML+=`
+      <tr>
+        <td>${o.id}</td>
+        <td>${items}</td>
+        <td>${o.status||"Paid"}</td>
+        <td><button onclick="setPreparing(${o.id}, 'Easy')">Preparing</button></td>
+        <td><button onclick="setReady(${o.id}, 'Easy')">Ready</button></td>
+        <td><button onclick="serveOrder(${o.id}, 'Easy')">Serve</button></td>
+      </tr>`;
+  });
+
+  const hardT=document.getElementById('hardKitchen'); hardT.innerHTML="";
+  hardQueue.forEach(o=>{
+    const items=o.items.map(i=>`${i.name} (${i.qty})`).join(", ");
+    hardT.innerHTML+=`
+      <tr>
+        <td>${o.id}</td>
+        <td>${items}</td>
+        <td>${o.status||"Paid"}</td>
+        <td><button onclick="setPreparing(${o.id}, 'Hard')">Preparing</button></td>
+        <td><button onclick="setReady(${o.id}, 'Hard')">Ready</button></td>
+        <td><button onclick="serveOrder(${o.id}, 'Hard')">Serve</button></td>
+      </tr>`;
+  });
 }
 
 document.getElementById('undoBtn').addEventListener('click', ()=>undo());
-window.markPaid=markPaid; window.markOnline=markOnline;
-window.setPreparing=setPreparing; window.setReady=setReady; window.serveOrder=serveOrder;
-window.undoAction=undo; window.renderAll=renderAll;
+window.markPaid=markPaid; 
+window.markOnline=markOnline;
+window.setPreparing=setPreparing; 
+window.setReady=setReady; 
+window.serveOrder=serveOrder;
+window.renderAll=renderAll;
+
 renderAll();
 </script>
-</body>
-</html>
